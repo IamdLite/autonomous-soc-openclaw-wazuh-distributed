@@ -1,0 +1,72 @@
+---
+# =============================================================================
+# ServiceMonitors — tell Prometheus what to scrape in soc-system namespace
+# =============================================================================
+
+# Autopilot Runtime
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: autopilot-runtime
+  namespace: soc-system
+  labels:
+    release: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app: autopilot-runtime
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+---
+# Wazuh MCP Server
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: wazuh-mcp
+  namespace: soc-system
+  labels:
+    release: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app: wazuh-mcp
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+---
+# NATS exporter (deployed by Helm chart)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: nats-exporter
+  namespace: soc-system
+  labels:
+    release: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nats
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+---
+# Redis exporter (deployed by Bitnami chart)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: redis-exporter
+  namespace: soc-system
+  labels:
+    release: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s

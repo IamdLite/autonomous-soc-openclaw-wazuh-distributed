@@ -1,0 +1,73 @@
+# =============================================================================
+# NATS JetStream — 3-node cluster Helm values
+# Replaces localhost webhooks with durable, at-least-once message delivery
+# =============================================================================
+
+cluster:
+  enabled: true
+  replicas: 3
+  name: soc-nats
+
+nats:
+  jetstream:
+    enabled: true
+    memStorage:
+      enabled: true
+      size: 1Gi
+    fileStorage:
+      enabled: true
+      size: 10Gi
+      storageClassName: standard   # Change to your StorageClass
+
+  # Credentials for runtime and agents
+  natsbox:
+    enabled: true
+
+auth:
+  enabled: true
+  basic:
+    users:
+      - user: soc-nats
+        passwordFile: /etc/nats-auth/password
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "7777"
+
+exporter:
+  enabled: true
+  image:
+    tag: latest
+  serviceMonitor:
+    enabled: true
+    namespace: soc-system
+
+statefulSet:
+  podManagementPolicy: Parallel
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Persistence for JetStream file store
+persistence:
+  enabled: true
+  size: 10Gi
+  storageClass: standard
+
+# Anti-affinity — spread across nodes for HA
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values: [nats]
+          topologyKey: kubernetes.io/hostname

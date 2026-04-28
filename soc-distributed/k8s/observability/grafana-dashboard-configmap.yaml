@@ -1,0 +1,91 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-soc-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  soc-dashboard.json: |
+    {
+      "title": "Autonomous SOC — Distributed Runtime",
+      "uid": "soc-distributed-v1",
+      "tags": ["soc", "wazuh", "nats", "redis"],
+      "refresh": "15s",
+      "panels": [
+        {
+          "title": "Alert Pipeline E2E Latency (P50/P95/P99)",
+          "type": "graph",
+          "gridPos": {"x":0,"y":0,"w":12,"h":8},
+          "targets": [
+            {"expr": "histogram_quantile(0.50, sum(rate(soc_alert_e2e_duration_seconds_bucket[5m])) by (le))", "legendFormat": "P50"},
+            {"expr": "histogram_quantile(0.95, sum(rate(soc_alert_e2e_duration_seconds_bucket[5m])) by (le))", "legendFormat": "P95"},
+            {"expr": "histogram_quantile(0.99, sum(rate(soc_alert_e2e_duration_seconds_bucket[5m])) by (le))", "legendFormat": "P99"}
+          ]
+        },
+        {
+          "title": "NATS Queue Depth per Stream",
+          "type": "bargauge",
+          "gridPos": {"x":12,"y":0,"w":12,"h":8},
+          "targets": [
+            {"expr": "nats_consumer_num_pending{stream=~\"ALERTS|AGENT_TASKS|AGENT_RESULTS|APPROVALS\"}", "legendFormat": "{{stream}}"}
+          ]
+        },
+        {
+          "title": "Active Runtime Replicas (HPA)",
+          "type": "stat",
+          "gridPos": {"x":0,"y":8,"w":4,"h":4},
+          "targets": [
+            {"expr": "kube_deployment_status_replicas_available{deployment=\"autopilot-runtime\"}"}
+          ]
+        },
+        {
+          "title": "Leader Election Events",
+          "type": "stat",
+          "gridPos": {"x":4,"y":8,"w":4,"h":4},
+          "targets": [
+            {"expr": "increase(soc_leader_election_total[1h])"}
+          ]
+        },
+        {
+          "title": "Open Cases",
+          "type": "stat",
+          "gridPos": {"x":8,"y":8,"w":4,"h":4},
+          "targets": [
+            {"expr": "soc_cases_open_total"}
+          ]
+        },
+        {
+          "title": "Alerts Processed / min",
+          "type": "stat",
+          "gridPos": {"x":12,"y":8,"w":4,"h":4},
+          "targets": [
+            {"expr": "rate(soc_alerts_processed_total[1m]) * 60"}
+          ]
+        },
+        {
+          "title": "Circuit Breaker State (MCP tools)",
+          "type": "table",
+          "gridPos": {"x":0,"y":12,"w":12,"h":6},
+          "targets": [
+            {"expr": "soc_circuit_breaker_state", "legendFormat": "{{tool}} — {{state}}"}
+          ]
+        },
+        {
+          "title": "Redis Operation Latency (P95)",
+          "type": "graph",
+          "gridPos": {"x":12,"y":12,"w":12,"h":6},
+          "targets": [
+            {"expr": "histogram_quantile(0.95, rate(redis_command_duration_seconds_bucket[5m]))", "legendFormat": "P95"}
+          ]
+        },
+        {
+          "title": "Per-Agent Processing Time",
+          "type": "graph",
+          "gridPos": {"x":0,"y":18,"w":24,"h":8},
+          "targets": [
+            {"expr": "histogram_quantile(0.95, sum(rate(soc_agent_duration_seconds_bucket[5m])) by (le, agent))", "legendFormat": "{{agent}} P95"}
+          ]
+        }
+      ]
+    }

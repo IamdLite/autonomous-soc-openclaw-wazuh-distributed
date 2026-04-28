@@ -1,0 +1,123 @@
+---
+# =============================================================================
+# Prometheus Alert Rules — Autonomous SOC distributed stack
+# =============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: soc-alerts
+  namespace: soc-system
+  labels:
+    release: kube-prometheus
+spec:
+  groups:
+
+    # ── Runtime health ─────────────────────────────────────────────────────────
+    - name: soc.runtime
+      interval: 30s
+      rules:
+        - alert: RuntimePodsDown
+          expr: kube_deployment_status_replicas_available{deployment="autopilot-runtime"} < 2
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Less than 2 autopilot runtime replicas available"
+            description: "Only {{ $value }} runtime pods are running. Leader election and alert processing may be impaired."
+
+        - alert: NoLeaderElected
+          expr: increase(soc_leader_election_total[5m]) == 0 and soc_cases_open_total == 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "No leader election events — poll loop may be stalled"
+
+        - alert: HighAlertBacklog
+          expr: soc_cases_open_total > 50
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Alert backlog high: {{ $value }} open cases"
+
+        - alert: PipelineLatencyHigh
+          expr: histogram_quantile(0.95, sum(rate(soc_alert_e2e_duration_seconds_bucket[10m])) by (le)) > 180
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "P95 pipeline latency > 3 min ({{ $value | humanizeDuration }})"
+
+    # ── Circuit breakers ───────────────────────────────────────────────────────
+    - name: soc.circuit_breakers
+      interval: 15s
+      rules:
+        - alert: CircuitBreakerOpen
+          expr: soc_circuit_breaker_state == 1
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Circuit breaker OPEN: {{ $labels.tool }}"
+            description: "The {{ $labels.tool }} circuit breaker is open. MCP tool calls are failing fast. Investigate Wazuh MCP connectivity."
+
+    # ── NATS ──────────────────────────────────────────────────────────────────
+    - name: soc.nats
+      interval: 30s
+      rules:
+        - alert: NatsQueueDepthHigh
+          expr: nats_consumer_num_pending{stream="ALERTS"} > 500
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "NATS ALERTS queue depth: {{ $value }} unprocessed messages"
+
+        - alert: NatsClusterDegraded
+          expr: nats_server_total_connections < 3
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "NATS cluster has fewer than 3 members — durability guarantee at risk"
+
+    # ── Redis ─────────────────────────────────────────────────────────────────
+    - name: soc.redis
+      interval: 30s
+      rules:
+        - alert: RedisSentinelNoMaster
+          expr: redis_sentinel_masters{status="ok"} < 1
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Redis Sentinel has no reachable master — case state unavailable"
+
+        - alert: RedisMemoryHigh
+          expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.85
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Redis using {{ $value | humanizePercentage }} of max memory"
+
+    # ── Wazuh ─────────────────────────────────────────────────────────────────
+    - name: soc.wazuh
+      interval: 60s
+      rules:
+        - alert: WazuhMcpDown
+          expr: up{job="wazuh-mcp"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Wazuh MCP Server is down — agents cannot query Wazuh"
+
+        - alert: ApprovalsStale
+          expr: soc_approvals_pending_total > 0
+          for: 60m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $value }} cases have been awaiting Slack approval for > 60 min"

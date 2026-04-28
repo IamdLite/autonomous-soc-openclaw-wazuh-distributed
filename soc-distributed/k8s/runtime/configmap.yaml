@@ -1,0 +1,53 @@
+---
+# =============================================================================
+# Autopilot Runtime — ConfigMap
+# All non-secret runtime configuration
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: autopilot-config
+  namespace: soc-system
+data:
+  # ── NATS ──────────────────────────────────────────────────────────────────
+  NATS_URL: "nats://nats:4222"
+  NATS_STREAM_ALERTS: "ALERTS"
+  NATS_STREAM_TASKS: "AGENT_TASKS"
+  NATS_STREAM_RESULTS: "AGENT_RESULTS"
+  NATS_STREAM_APPROVALS: "APPROVALS"
+  NATS_CONSUMER_DURABLE: "autopilot-runtime"
+
+  # ── Redis Sentinel ────────────────────────────────────────────────────────
+  REDIS_SENTINEL_HOSTS: "redis-node-0.redis-headless:26379,redis-node-1.redis-headless:26379,redis-node-2.redis-headless:26379"
+  REDIS_SENTINEL_MASTER: "soc-master"
+  REDIS_KEY_PREFIX: "soc:"
+  # Leader election TTL (ms) — poll lock expires if not refreshed
+  LEADER_LOCK_TTL_MS: "10000"
+  LEADER_LOCK_REFRESH_MS: "8000"
+
+  # ── OpenClaw gateway ──────────────────────────────────────────────────────
+  OPENCLAW_HOST: "http://openclaw-gateway:8888"
+
+  # ── Wazuh MCP ─────────────────────────────────────────────────────────────
+  MCP_SERVER_URL: "http://wazuh-mcp:3000/mcp"
+
+  # ── OpenSearch ────────────────────────────────────────────────────────────
+  OPENSEARCH_URL: "http://opensearch-cluster-master:9200"
+  OPENSEARCH_INDEX: "wazuh-alerts-*"
+
+  # ── Pipeline tuning ───────────────────────────────────────────────────────
+  POLL_INTERVAL_MS: "15000"
+  MAX_CONCURRENT_CASES: "20"
+  MIN_ALERT_LEVEL: "7"
+  CASE_TTL_HOURS: "48"
+
+  # ── Circuit breaker (opossum) ─────────────────────────────────────────────
+  CB_TIMEOUT_MS: "10000"
+  CB_ERROR_THRESHOLD_PERCENT: "50"
+  CB_RESET_TIMEOUT_MS: "30000"
+  CB_VOLUME_THRESHOLD: "5"
+
+  # ── Observability ─────────────────────────────────────────────────────────
+  METRICS_PORT: "9090"
+  LOG_LEVEL: "info"
+  NODE_ENV: "production"

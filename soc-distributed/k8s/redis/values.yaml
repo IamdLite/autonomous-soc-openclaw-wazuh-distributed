@@ -1,0 +1,72 @@
+# =============================================================================
+# Redis Sentinel — 1 primary + 2 replicas
+# Stores: case:{id}, session:{caseId}, approval_queue, leader election locks
+# =============================================================================
+
+architecture: replication
+
+auth:
+  enabled: true
+  existingSecret: wazuh-credentials
+  existingSecretPasswordKey: redis-password
+
+sentinel:
+  enabled: true
+  masterSet: soc-master
+  quorum: 2
+  downAfterMilliseconds: 10000
+  failoverTimeout: 30000
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+master:
+  count: 1
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: standard
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+replica:
+  replicaCount: 2
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: standard
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    namespace: soc-system
+
+# Anti-affinity for HA
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values: [redis]
+          topologyKey: kubernetes.io/hostname

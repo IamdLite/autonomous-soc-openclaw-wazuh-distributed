@@ -1,0 +1,163 @@
+---
+# =============================================================================
+# Autopilot Runtime — 3 replicas
+# Orchestrates the 7-agent SOC pipeline. Communicates via NATS (not localhost).
+# State stored in Redis Sentinel. Leader election via SET NX.
+# Circuit breakers on all MCP tool calls (opossum).
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: autopilot-runtime
+  namespace: soc-system
+  labels:
+    app: autopilot-runtime
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: autopilot-runtime
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0      # zero-downtime rollouts
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: autopilot-runtime
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      # Graceful shutdown — finish in-flight cases before terminating
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: autopilot
+          image: ghcr.io/gensecaihq/autopilot-runtime:latest
+          imagePullPolicy: Always
+          ports:
+            - name: metrics
+              containerPort: 9090
+            - name: health
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: autopilot-config
+          env:
+            # Secrets injected individually
+            - name: LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: autopilot-secrets
+                  key: llm-api-key
+            - name: LLM_BASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: autopilot-secrets
+                  key: llm-base-url
+            - name: LLM_MODEL
+              valueFrom:
+                secretKeyRef:
+                  name: autopilot-secrets
+                  key: llm-model
+            - name: SLACK_APP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: autopilot-secrets
+                  key: slack-app-token
+            - name: SLACK_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: autopilot-secrets
+                  key: slack-bot-token
+            - name: MCP_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: autopilot-secrets
+                  key: mcp-auth-token
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: wazuh-credentials
+                  key: redis-password
+            - name: WAZUH_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: wazuh-credentials
+                  key: host
+            - name: WAZUH_USER
+              valueFrom:
+                secretKeyRef:
+                  name: wazuh-credentials
+                  key: user
+            - name: WAZUH_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: wazuh-credentials
+                  key: password
+            # Pod identity — used in leader election logs
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 40
+            periodSeconds: 20
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                # Release leader lock before pod terminates
+                command: ["/bin/sh", "-c", "node /app/scripts/release-leader-lock.js"]
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values: [autopilot-runtime]
+                topologyKey: kubernetes.io/hostname
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: autopilot-runtime
+  namespace: soc-system
+  labels:
+    app: autopilot-runtime
+spec:
+  selector:
+    app: autopilot-runtime
+  ports:
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+    - name: health
+      port: 8080
+      targetPort: 8080

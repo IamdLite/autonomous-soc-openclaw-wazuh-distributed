@@ -1,0 +1,106 @@
+---
+# =============================================================================
+# OpenSearch — 3-node cluster
+# Indexes and stores all Wazuh alerts; queried by Investigation agent
+# =============================================================================
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: opensearch
+  namespace: soc-system
+  labels:
+    app: opensearch
+spec:
+  serviceName: opensearch
+  replicas: 3
+  selector:
+    matchLabels:
+      app: opensearch
+  template:
+    metadata:
+      labels:
+        app: opensearch
+    spec:
+      initContainers:
+        - name: sysctl
+          image: busybox
+          command: ["sysctl", "-w", "vm.max_map_count=262144"]
+          securityContext:
+            privileged: true
+      containers:
+        - name: opensearch
+          image: opensearchproject/opensearch:2.17.0
+          env:
+            - name: cluster.name
+              value: wazuh-opensearch
+            - name: node.name
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: discovery.seed_hosts
+              value: "opensearch-0.opensearch,opensearch-1.opensearch,opensearch-2.opensearch"
+            - name: cluster.initial_master_nodes
+              value: "opensearch-0,opensearch-1,opensearch-2"
+            - name: OPENSEARCH_JAVA_OPTS
+              value: "-Xms1g -Xmx1g"
+            - name: OPENSEARCH_INITIAL_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: wazuh-credentials
+                  key: opensearch-password
+            - name: plugins.security.ssl.http.enabled
+              value: "false"
+          ports:
+            - containerPort: 9200
+            - containerPort: 9300
+          resources:
+            requests:
+              cpu: 500m
+              memory: 2Gi
+            limits:
+              cpu: 2
+              memory: 4Gi
+          volumeMounts:
+            - name: opensearch-data
+              mountPath: /usr/share/opensearch/data
+          readinessProbe:
+            httpGet:
+              path: /_cluster/health
+              port: 9200
+            initialDelaySeconds: 60
+            periodSeconds: 20
+  volumeClaimTemplates:
+    - metadata:
+        name: opensearch-data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 30Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opensearch
+  namespace: soc-system
+spec:
+  clusterIP: None   # headless — required for StatefulSet DNS
+  selector:
+    app: opensearch
+  ports:
+    - name: rest
+      port: 9200
+    - name: inter-node
+      port: 9300
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opensearch-cluster-master
+  namespace: soc-system
+spec:
+  selector:
+    app: opensearch
+  ports:
+    - name: rest
+      port: 9200

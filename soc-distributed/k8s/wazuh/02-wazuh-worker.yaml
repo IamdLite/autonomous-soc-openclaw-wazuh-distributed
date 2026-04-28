@@ -1,0 +1,117 @@
+---
+# =============================================================================
+# Wazuh Worker Nodes (2 replicas)
+# Handle agent event ingestion and forward to master for correlation
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wazuh-worker
+  namespace: soc-system
+  labels:
+    app: wazuh
+    role: worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: wazuh
+      role: worker
+  template:
+    metadata:
+      labels:
+        app: wazuh
+        role: worker
+    spec:
+      volumes:
+        - name: wazuh-config
+          configMap:
+            name: wazuh-worker-config
+        - name: wazuh-data
+          emptyDir: {}
+      containers:
+        - name: wazuh-worker
+          image: wazuh/wazuh-manager:4.12.0
+          ports:
+            - containerPort: 1514
+            - containerPort: 1515
+            - containerPort: 1516
+          env:
+            - name: WAZUH_CLUSTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: wazuh-credentials
+                  key: cluster-key
+          volumeMounts:
+            - name: wazuh-config
+              mountPath: /wazuh-config-mount
+            - name: wazuh-data
+              mountPath: /var/ossec/data
+          resources:
+            requests:
+              cpu: 300m
+              memory: 512Mi
+            limits:
+              cpu: 1
+              memory: 2Gi
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: role
+                      operator: In
+                      values: [worker]
+                topologyKey: kubernetes.io/hostname
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wazuh-worker
+  namespace: soc-system
+spec:
+  selector:
+    app: wazuh
+    role: worker
+  ports:
+    - name: agent-udp
+      port: 1514
+      protocol: UDP
+    - name: enrollment
+      port: 1515
+    - name: cluster
+      port: 1516
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wazuh-worker-config
+  namespace: soc-system
+data:
+  ossec.conf: |
+    <ossec_config>
+      <cluster>
+        <name>wazuh-soc</name>
+        <node_name>worker-node</node_name>
+        <node_type>worker</node_type>
+        <key>${WAZUH_CLUSTER_KEY}</key>
+        <port>1516</port>
+        <bind_addr>0.0.0.0</bind_addr>
+        <nodes>
+          <node>wazuh-master</node>
+        </nodes>
+        <hidden>no</hidden>
+        <disabled>no</disabled>
+      </cluster>
+      <global>
+        <jsonout_output>yes</jsonout_output>
+        <alerts_log>yes</alerts_log>
+      </global>
+      <remote>
+        <connection>secure</connection>
+        <port>1514</port>
+        <protocol>tcp</protocol>
+      </remote>
+    </ossec_config>

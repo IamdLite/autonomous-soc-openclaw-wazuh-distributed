@@ -1,0 +1,24 @@
+# =============================================================================
+# OpenClaw Agent NATS Wrapper
+# One image, many agents — AGENT_NAME env var selects which agent to run
+# =============================================================================
+
+FROM node:20-alpine
+WORKDIR /app
+
+RUN addgroup -S soc && adduser -S soc -G soc
+
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+COPY src/agents/nats-wrapper.js ./src/agents/
+COPY package.json ./
+
+USER soc
+
+EXPOSE 9091
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
+  CMD wget -qO- http://localhost:9091/healthz || exit 1
+
+CMD ["node", "src/agents/nats-wrapper.js"]

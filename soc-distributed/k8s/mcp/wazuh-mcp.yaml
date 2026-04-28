@@ -1,0 +1,107 @@
+---
+# =============================================================================
+# Wazuh MCP Server — 2 replicas
+# Exposes Wazuh REST API as MCP tool calls for OpenClaw agents.
+# Wrapped with circuit breaker in the runtime (opossum).
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wazuh-mcp
+  namespace: soc-system
+  labels:
+    app: wazuh-mcp
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: wazuh-mcp
+  template:
+    metadata:
+      labels:
+        app: wazuh-mcp
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: wazuh-mcp
+          image: ghcr.io/gensecaihq/wazuh-mcp-server:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: WAZUH_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: wazuh-credentials
+                  key: host
+            - name: WAZUH_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: wazuh-credentials
+                  key: port
+            - name: WAZUH_USER
+              valueFrom:
+                secretKeyRef:
+                  name: wazuh-credentials
+                  key: user
+            - name: WAZUH_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: wazuh-credentials
+                  key: password
+            - name: MCP_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: autopilot-secrets
+                  key: mcp-auth-token
+            - name: NODE_ENV
+              value: production
+            - name: LOG_LEVEL
+              value: info
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 20
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values: [wazuh-mcp]
+                topologyKey: kubernetes.io/hostname
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wazuh-mcp
+  namespace: soc-system
+  labels:
+    app: wazuh-mcp
+spec:
+  selector:
+    app: wazuh-mcp
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000

@@ -1,0 +1,89 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nats-stream-init
+  namespace: soc-system
+  labels:
+    app: nats-stream-init
+spec:
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: nats-cli
+          image: natsio/nats-box:latest
+          env:
+            - name: NATS_USER
+              valueFrom:
+                secretKeyRef:
+                  name: autopilot-secrets
+                  key: nats-user
+                  optional: true
+            - name: NATS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: autopilot-secrets
+                  key: nats-password
+                  optional: true
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              NATS_URL="nats://nats:4222"
+              echo "Waiting for NATS cluster to be ready..."
+              for i in $(seq 1 30); do
+                nats server check --server="$NATS_URL" 2>/dev/null && break
+                echo "  attempt $i/30 — sleeping 5s"
+                sleep 5
+              done
+
+              echo "Creating JetStream streams..."
+
+              # ALERTS — Wazuh → Autopilot runtime
+              nats stream add ALERTS \
+                --server="$NATS_URL" \
+                --subjects="alerts.>" \
+                --storage=file \
+                --replicas=3 \
+                --retention=limits \
+                --max-age=24h \
+                --max-msgs=100000 \
+                --ack \
+                --defaults 2>/dev/null || echo "ALERTS stream already exists"
+
+              # AGENT_TASKS — runtime → OpenClaw agents
+              nats stream add AGENT_TASKS \
+                --server="$NATS_URL" \
+                --subjects="agent.tasks.>" \
+                --storage=file \
+                --replicas=3 \
+                --retention=workqueue \
+                --max-age=1h \
+                --ack \
+                --defaults 2>/dev/null || echo "AGENT_TASKS stream already exists"
+
+              # AGENT_RESULTS — agents → runtime
+              nats stream add AGENT_RESULTS \
+                --server="$NATS_URL" \
+                --subjects="agent.results.>" \
+                --storage=file \
+                --replicas=3 \
+                --retention=limits \
+                --max-age=2h \
+                --ack \
+                --defaults 2>/dev/null || echo "AGENT_RESULTS stream already exists"
+
+              # APPROVALS — human-in-the-loop Slack decisions
+              nats stream add APPROVALS \
+                --server="$NATS_URL" \
+                --subjects="approvals.>" \
+                --storage=file \
+                --replicas=3 \
+                --retention=limits \
+                --max-age=48h \
+                --ack \
+                --defaults 2>/dev/null || echo "APPROVALS stream already exists"
+
+              echo "All streams created:"
+              nats stream list --server="$NATS_URL"

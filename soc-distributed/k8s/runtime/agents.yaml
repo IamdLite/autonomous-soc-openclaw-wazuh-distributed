@@ -1,0 +1,264 @@
+---
+# =============================================================================
+# OpenClaw Agent Deployments — all 7 pipeline agents
+# Each agent runs the same nats-wrapper image; AGENT_NAME selects behaviour.
+# Agents subscribe to agent.tasks.<name> via NATS JetStream.
+# =============================================================================
+
+# ── Shared agent ConfigMap ─────────────────────────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-config
+  namespace: soc-system
+data:
+  NATS_URL:        "nats://nats:4222"
+  OPENCLAW_HOST:   "http://openclaw-gateway:8888"
+  METRICS_PORT:    "9091"
+  AGENT_CONCURRENCY: "5"
+  LOG_LEVEL:       "info"
+
+---
+# ─────────────────────────────────────────────────────────────────────────────
+# Helper template — repeated per agent (k8s doesn't support YAML anchors in
+# multi-doc files portably, so each deployment is explicit)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# 1. Triage Agent
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-triage
+  namespace: soc-system
+  labels: { app: openclaw-agent, agent: triage }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: openclaw-agent, agent: triage }
+  template:
+    metadata:
+      labels: { app: openclaw-agent, agent: triage }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port:   "9091"
+    spec:
+      containers:
+        - name: agent
+          image: ghcr.io/gensecaihq/openclaw-agent-wrapper:latest
+          env:
+            - { name: AGENT_NAME, value: triage }
+          envFrom:
+            - configMapRef: { name: agent-config }
+            - secretRef:    { name: autopilot-secrets }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits:   { cpu: 500m, memory: 512Mi }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 9091 }
+            initialDelaySeconds: 10
+---
+# 2. Correlation Agent
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-correlation
+  namespace: soc-system
+  labels: { app: openclaw-agent, agent: correlation }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: openclaw-agent, agent: correlation }
+  template:
+    metadata:
+      labels: { app: openclaw-agent, agent: correlation }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port:   "9091"
+    spec:
+      containers:
+        - name: agent
+          image: ghcr.io/gensecaihq/openclaw-agent-wrapper:latest
+          env:
+            - { name: AGENT_NAME, value: correlation }
+          envFrom:
+            - configMapRef: { name: agent-config }
+            - secretRef:    { name: autopilot-secrets }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits:   { cpu: 500m, memory: 512Mi }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 9091 }
+            initialDelaySeconds: 10
+---
+# 3. Investigation Agent
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-investigation
+  namespace: soc-system
+  labels: { app: openclaw-agent, agent: investigation }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: openclaw-agent, agent: investigation }
+  template:
+    metadata:
+      labels: { app: openclaw-agent, agent: investigation }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port:   "9091"
+    spec:
+      containers:
+        - name: agent
+          image: ghcr.io/gensecaihq/openclaw-agent-wrapper:latest
+          env:
+            - { name: AGENT_NAME, value: investigation }
+          envFrom:
+            - configMapRef: { name: agent-config }
+            - secretRef:    { name: autopilot-secrets }
+          resources:
+            requests: { cpu: 150m, memory: 384Mi }
+            limits:   { cpu: 750m, memory: 768Mi }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 9091 }
+            initialDelaySeconds: 10
+---
+# 4. Response Planner Agent
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-response-planner
+  namespace: soc-system
+  labels: { app: openclaw-agent, agent: response_planner }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: openclaw-agent, agent: response_planner }
+  template:
+    metadata:
+      labels: { app: openclaw-agent, agent: response_planner }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port:   "9091"
+    spec:
+      containers:
+        - name: agent
+          image: ghcr.io/gensecaihq/openclaw-agent-wrapper:latest
+          env:
+            - { name: AGENT_NAME, value: response_planner }
+          envFrom:
+            - configMapRef: { name: agent-config }
+            - secretRef:    { name: autopilot-secrets }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits:   { cpu: 500m, memory: 512Mi }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 9091 }
+            initialDelaySeconds: 10
+---
+# 5. Slack Notifier Agent
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-slack-notifier
+  namespace: soc-system
+  labels: { app: openclaw-agent, agent: slack_notifier }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: openclaw-agent, agent: slack_notifier }
+  template:
+    metadata:
+      labels: { app: openclaw-agent, agent: slack_notifier }
+    spec:
+      containers:
+        - name: agent
+          image: ghcr.io/gensecaihq/openclaw-agent-wrapper:latest
+          env:
+            - { name: AGENT_NAME, value: slack_notifier }
+          envFrom:
+            - configMapRef: { name: agent-config }
+            - secretRef:    { name: autopilot-secrets }
+          resources:
+            requests: { cpu: 50m,  memory: 128Mi }
+            limits:   { cpu: 200m, memory: 256Mi }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 9091 }
+            initialDelaySeconds: 10
+---
+# 6. Executor Agent
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-executor
+  namespace: soc-system
+  labels: { app: openclaw-agent, agent: executor }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: openclaw-agent, agent: executor }
+  template:
+    metadata:
+      labels: { app: openclaw-agent, agent: executor }
+    spec:
+      containers:
+        - name: agent
+          image: ghcr.io/gensecaihq/openclaw-agent-wrapper:latest
+          env:
+            - { name: AGENT_NAME, value: executor }
+          envFrom:
+            - configMapRef: { name: agent-config }
+            - secretRef:    { name: autopilot-secrets }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits:   { cpu: 500m, memory: 512Mi }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 9091 }
+            initialDelaySeconds: 10
+---
+# 7. Audit Logger Agent
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-audit-logger
+  namespace: soc-system
+  labels: { app: openclaw-agent, agent: audit_logger }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: openclaw-agent, agent: audit_logger }
+  template:
+    metadata:
+      labels: { app: openclaw-agent, agent: audit_logger }
+    spec:
+      containers:
+        - name: agent
+          image: ghcr.io/gensecaihq/openclaw-agent-wrapper:latest
+          env:
+            - { name: AGENT_NAME, value: audit_logger }
+          envFrom:
+            - configMapRef: { name: agent-config }
+            - secretRef:    { name: autopilot-secrets }
+          resources:
+            requests: { cpu: 50m,  memory: 128Mi }
+            limits:   { cpu: 200m, memory: 256Mi }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 9091 }
+            initialDelaySeconds: 10
+
+---
+# ── OpenClaw Gateway Service ───────────────────────────────────────────────────
+# The internal webhook router that agent wrappers POST to — unchanged from
+# the original single-node design. Only the delivery mechanism changed (NATS).
+apiVersion: v1
+kind: Service
+metadata:
+  name: openclaw-gateway
+  namespace: soc-system
+spec:
+  selector:
+    app: openclaw-gateway
+  ports:
+    - name: http
+      port: 8888
+      targetPort: 8888
