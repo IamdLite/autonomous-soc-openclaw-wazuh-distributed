@@ -1,0 +1,20 @@
+# Environment & secrets
+.env
+*.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Benchmark results
+benchmark-results/
+
+# Kubernetes generated
+*.kubeconfig
+kubeconfig
